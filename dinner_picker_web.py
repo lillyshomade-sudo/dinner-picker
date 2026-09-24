@@ -5,21 +5,21 @@ from collections import Counter
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import os
 
 
 # ------------------------------------------------------------
-# Load spreadsheet
+# Load spreadsheet safely (works on Streamlit Cloud)
 # ------------------------------------------------------------
-@st.cache_data
-
-def load_data(filename):
-    meals_df = pd.read_excel(filename, sheet_name="Recipes")
-    ingredients_df = pd.read_excel(filename, sheet_name="Ingredients")
+def load_data():
+    excel_path = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
+    meals_df = pd.read_excel(excel_path, sheet_name="Recipes")
+    ingredients_df = pd.read_excel(excel_path, sheet_name="Ingredients")
     return meals_df, ingredients_df
 
 
 # ------------------------------------------------------------
-# Weighted random choice with meat/carb limits
+# Choose meals with weighted randomness + Daniel rule
 # ------------------------------------------------------------
 def choose_meals(df, n):
     chosen = []
@@ -34,8 +34,11 @@ def choose_meals(df, n):
 
     random.shuffle(weighted_options)
 
-    # STEP 1 — Try to pick at least one Daniel meal
-    daniel_meals = [m for m in weighted_options if str(m["Daniel Meal"]).lower() == "yes"]
+    # STEP 1 — Ensure at least one Daniel meal
+    daniel_meals = [
+        m for m in weighted_options
+        if str(m["Daniel Meal"]).strip().lower() == "yes"
+    ]
 
     if daniel_meals:
         first_daniel = daniel_meals[0]
@@ -43,7 +46,7 @@ def choose_meals(df, n):
         meat_count[first_daniel["Meat"]] = 1
         carb_count[first_daniel["Carb"]] = 1
 
-    # STEP 2 — Fill the remaining slots
+    # STEP 2 — Fill remaining slots
     for meal in weighted_options:
         if meal in chosen:
             continue
@@ -66,33 +69,28 @@ def choose_meals(df, n):
     return chosen
 
 
-
 # ------------------------------------------------------------
-# Get ingredients for a specific meal
+# Get ingredients for a meal (column‑safe)
 # ------------------------------------------------------------
 def get_ingredients_for_meal(meal_name, ingredients_df):
-    rows = ingredients_df[ingredients_df["Meal Name"] == meal_name]
-    return [row["Ingredient"] for _, row in rows.iterrows()]
+    rows = ingredients_df[ingredients_df.iloc[:, 0] == meal_name]
+    return [row.iloc[1] for _, row in rows.iterrows()]
 
 
 # ------------------------------------------------------------
-# Build collated shopping list
+# Build shopping list
 # ------------------------------------------------------------
 def build_shopping_list(meals, ingredients_df):
     counter = Counter()
-
     for meal in meals:
-        meal_name = meal["Meal Name"]
-        ingredients = get_ingredients_for_meal(meal_name, ingredients_df)
-
+        ingredients = get_ingredients_for_meal(meal["Meal Name"], ingredients_df)
         for ingredient in ingredients:
             counter[ingredient] += 1
-
     return counter
 
 
 # ------------------------------------------------------------
-# Build email body
+# Build email body (HTML)
 # ------------------------------------------------------------
 def build_email_body(meals, ingredients_df):
     body = "<h2>Your Dinner Plan</h2>"
@@ -138,18 +136,16 @@ def send_email(to_email, subject, html_body, from_email, password):
 
 
 # ------------------------------------------------------------
-# Streamlit Web App
+# Streamlit App
 # ------------------------------------------------------------
 def main():
     st.title("Weekly Dinner Picker 🍽️")
-    st.write("Choose how many meals you want this week and generate a plan.")
+    st.write("Generate your weekly meal plan and email it to yourself.")
 
+    meals_df, ingredients_df = load_data()
 
-    filename ="dinner options.xlsx"
-    meals_df, ingredients_df = load_data(filename)
-
-    # User chooses number of meals
-    n = st.slider("Number of meals this week:", min_value=1, max_value=10, value=5)
+    # Choose number of meals
+    n = st.slider("Number of meals this week:", 1, 10, 5)
 
     if st.button("Generate Meal Plan"):
         meals = choose_meals(meals_df, n)
@@ -166,17 +162,19 @@ def main():
             st.write(ingredients)
 
         shopping = build_shopping_list(meals, ingredients_df)
-
         st.subheader("Shopping List")
         st.write(shopping)
 
-        # Email section
+        # Email form
         st.subheader("Email This Plan")
-        to_email = st.text_input("Your email address")
-        from_email = st.text_input("Sender Gmail address")
-        password = st.text_input("Gmail App Password", type="password")
 
-        if st.button("Send Email"):
+        with st.form("email_form"):
+            to_email = st.text_input("Your email address")
+            from_email = st.text_input("Sender Gmail address")
+            password = st.text_input("Gmail App Password", type="password")
+            submitted = st.form_submit_button("Send Email")
+
+        if submitted:
             html_body = build_email_body(meals, ingredients_df)
             send_email(to_email, "Your Weekly Dinner Plan", html_body, from_email, password)
             st.success("Email sent successfully!")
@@ -184,4 +182,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
