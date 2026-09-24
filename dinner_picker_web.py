@@ -144,9 +144,9 @@ def main():
     st.title("Weekly Dinner Picker 🍽️")
     st.write("Choose how many meals you want this week and generate a plan.")
 
-    import os
+import os
 
-filename = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
+    filename = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
     meals_df, ingredients_df = load_data(filename)
 
     # User chooses number of meals
