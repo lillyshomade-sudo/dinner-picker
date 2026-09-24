@@ -18,7 +18,9 @@ import streamlit_authenticator as stauth
 def get_auth_config():
     # Hash the password once at startup
     plain_password = "Gr33nL00p0r@ng3"
-    hashed_password = stauth.Hasher([plain_password]).generate()[0]
+    hashed_password_list = stauth.Hasher([plain_password]).generate()
+    hashed_password = hashed_password_list[0]
+
 
     config = {
         "credentials": {
