@@ -11,7 +11,9 @@ from email.mime.multipart import MIMEMultipart
 # Load spreadsheet
 # ------------------------------------------------------------
 @st.cache_data
-filename = dinner_options.xlsx
+import os
+
+filename = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
 def load_data(filename):
     meals_df = pd.read_excel(filename, sheet_name="Recipes")
     ingredients_df = pd.read_excel(filename, sheet_name="Ingredients")
