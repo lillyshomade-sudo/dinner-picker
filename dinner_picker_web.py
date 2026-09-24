@@ -2,17 +2,55 @@ import streamlit as st
 import pandas as pd
 import random
 from collections import Counter
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import os
+from io import BytesIO
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
+import yaml
+import streamlit_authenticator as stauth
+
+
+# ------------------------------------------------------------
+# Auth config (single user: Jo)
+# ------------------------------------------------------------
+def get_auth_config():
+    # Hash the password once at startup
+    plain_password = "Gr33nL00p0r@ng3"
+    hashed_password = stauth.Hasher([plain_password]).generate()[0]
+
+    config = {
+        "credentials": {
+            "usernames": {
+                "Dinners4J0": {
+                    "email": "jo@example.com",
+                    "name": "Jo",
+                    "password": hashed_password,
+                }
+            }
+        },
+        "cookie": {
+            "expiry_days": 30,
+            "key": "some_random_signature_key",
+            "name": "dinner_picker_cookie",
+        },
+        "preauthorized": {
+            "emails": []
+        },
+    }
+    return config
 
 
 # ------------------------------------------------------------
 # Load spreadsheet safely (works on Streamlit Cloud)
 # ------------------------------------------------------------
+def get_excel_path():
+    return os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
+
+
 def load_data():
-    excel_path = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
+    excel_path = get_excel_path()
     meals_df = pd.read_excel(excel_path, sheet_name="Recipes")
     ingredients_df = pd.read_excel(excel_path, sheet_name="Ingredients")
     return meals_df, ingredients_df
@@ -70,16 +108,13 @@ def choose_meals(df, n):
 
 
 # ------------------------------------------------------------
-# Get ingredients for a meal (column‑safe)
+# Ingredients + shopping list
 # ------------------------------------------------------------
 def get_ingredients_for_meal(meal_name, ingredients_df):
     rows = ingredients_df[ingredients_df.iloc[:, 0] == meal_name]
     return [row.iloc[1] for _, row in rows.iterrows()]
 
 
-# ------------------------------------------------------------
-# Build shopping list
-# ------------------------------------------------------------
 def build_shopping_list(meals, ingredients_df):
     counter = Counter()
     for meal in meals:
@@ -90,61 +125,123 @@ def build_shopping_list(meals, ingredients_df):
 
 
 # ------------------------------------------------------------
-# Build email body (HTML)
+# PDF generation
 # ------------------------------------------------------------
-def build_email_body(meals, ingredients_df):
-    body = "<h2>Your Dinner Plan</h2>"
+def generate_pdf(meals, ingredients_df):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    y = height - 40
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, y, "Weekly Dinner Plan")
+    y -= 30
+
+    c.setFont("Helvetica", 12)
 
     for m in meals:
-        body += f"<h3>{m['Meal Name']}</h3>"
-        body += f"<p><b>Link:</b> <a href='{m['Link']}'>{m['Link']}</a><br>"
-        body += f"<b>Method:</b> {m['Method']}<br>"
-        body += f"<b>Notes:</b> {m['Notes']}</p>"
+        if y < 80:
+            c.showPage()
+            y = height - 40
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(40, y, "Weekly Dinner Plan (cont.)")
+            y -= 30
+            c.setFont("Helvetica", 12)
+
+        c.drawString(40, y, f"Meal: {m['Meal Name']}")
+        y -= 16
+        c.drawString(40, y, f"Link: {m['Link']}")
+        y -= 16
+        c.drawString(40, y, f"Method: {m['Method']}")
+        y -= 16
+        c.drawString(40, y, f"Notes: {m['Notes']}")
+        y -= 16
 
         ingredients = get_ingredients_for_meal(m["Meal Name"], ingredients_df)
-        body += "<ul>"
+        c.drawString(40, y, "Ingredients:")
+        y -= 16
         for ing in ingredients:
-            body += f"<li>{ing}</li>"
-        body += "</ul>"
+            c.drawString(60, y, f"- {ing}")
+            y -= 14
 
-    body += "<h2>Shopping List</h2>"
+        y -= 10
+
+    # Shopping list
     shopping = build_shopping_list(meals, ingredients_df)
 
-    body += "<ul>"
+    if y < 120:
+        c.showPage()
+        y = height - 40
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, y, "Shopping List")
+    y -= 30
+    c.setFont("Helvetica", 12)
+
     for item, count in shopping.items():
-        body += f"<li>{item} x{count}</li>"
-    body += "</ul>"
+        if y < 60:
+            c.showPage()
+            y = height - 40
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(40, y, "Shopping List (cont.)")
+            y -= 30
+            c.setFont("Helvetica", 12)
+        c.drawString(40, y, f"- {item} x{count}")
+        y -= 16
 
-    return body
-
-
-# ------------------------------------------------------------
-# Send email
-# ------------------------------------------------------------
-def send_email(to_email, subject, html_body, from_email, password):
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = to_email
-
-    msg.attach(MIMEText(html_body, "html"))
-
-    server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-    server.login(from_email, password)
-    server.sendmail(from_email, to_email, msg.as_string())
-    server.quit()
+    c.save()
+    buffer.seek(0)
+    return buffer
 
 
 # ------------------------------------------------------------
-# Streamlit App
+# Spreadsheet upload (update dinners.xlsx)
+# ------------------------------------------------------------
+def handle_upload():
+    st.subheader("Update spreadsheet")
+    uploaded_file = st.file_uploader("Upload a new dinners.xlsx", type=["xlsx"])
+    if uploaded_file is not None:
+        excel_path = get_excel_path()
+        with open(excel_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success("Spreadsheet updated. Reload the page to use the new data.")
+
+
+# ------------------------------------------------------------
+# Main app with login
 # ------------------------------------------------------------
 def main():
+    st.set_page_config(page_title="Weekly Dinner Picker", page_icon="🍽️")
+
+    config = get_auth_config()
+    authenticator = stauth.Authenticate(
+        config["credentials"],
+        config["cookie"]["name"],
+        config["cookie"]["key"],
+        config["cookie"]["expiry_days"],
+        config["preauthorized"],
+    )
+
+    name, authentication_status, username = authenticator.login("Login", "main")
+
+    if authentication_status is False:
+        st.error("Username or password is incorrect.")
+        return
+    elif authentication_status is None:
+        st.warning("Please enter your username and password.")
+        return
+
+    # Authenticated
+    authenticator.logout("Logout", "sidebar")
+    st.sidebar.write(f"Logged in as {name}")
+
     st.title("Weekly Dinner Picker 🍽️")
-    st.write("Generate your weekly meal plan and email it to yourself.")
+    st.write("Generate your weekly meal plan, download it as a PDF, and keep your spreadsheet up to date.")
+
+    handle_upload()
 
     meals_df, ingredients_df = load_data()
 
-    # Choose number of meals
     n = st.slider("Number of meals this week:", 1, 10, 5)
 
     if st.button("Generate Meal Plan"):
@@ -165,22 +262,15 @@ def main():
         st.subheader("Shopping List")
         st.write(shopping)
 
-        # Email form
-        st.subheader("Email This Plan")
-
-        with st.form("email_form"):
-            to_email = st.text_input("Your email address")
-            from_email = st.text_input("Sender Gmail address")
-            password = st.text_input("Gmail App Password", type="password")
-            submitted = st.form_submit_button("Send Email")
-
-        if submitted:
-            html_body = build_email_body(meals, ingredients_df)
-            send_email(to_email, "Your Weekly Dinner Plan", html_body, from_email, password)
-            st.success("Email sent successfully!")
+        pdf_buffer = generate_pdf(meals, ingredients_df)
+        st.download_button(
+            label="Download PDF Meal Plan",
+            data=pdf_buffer,
+            file_name="weekly_dinner_plan.pdf",
+            mime="application/pdf",
+        )
 
 
 if __name__ == "__main__":
     main()
-
 
