@@ -12,12 +12,12 @@ from reportlab.pdfgen import canvas
 # Load spreadsheet safely
 # ------------------------------------------------------------
 def get_excel_path():
-    return os.path.join(os.path.dirname(__file__), "dinners.xlsx")
+    return os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
 
 
 def load_data():
     excel_path = get_excel_path()
-    meals_df = pd.read_excel(excel_path, sheet_name="Meals")
+    meals_df = pd.read_excel(excel_path, sheet_name="Recipes")
     ingredients_df = pd.read_excel(excel_path, sheet_name="Ingredients")
     return meals_df, ingredients_df
 
