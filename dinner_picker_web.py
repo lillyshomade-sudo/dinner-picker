@@ -11,9 +11,7 @@ from email.mime.multipart import MIMEMultipart
 # Load spreadsheet
 # ------------------------------------------------------------
 @st.cache_data
-import os
 
-filename = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
 def load_data(filename):
     meals_df = pd.read_excel(filename, sheet_name="Recipes")
     ingredients_df = pd.read_excel(filename, sheet_name="Ingredients")
@@ -146,7 +144,9 @@ def main():
     st.title("Weekly Dinner Picker 🍽️")
     st.write("Choose how many meals you want this week and generate a plan.")
 
-    filename = r"C:\Users\lilly\Documents\dinner options.xlsx"
+    import os
+
+filename = os.path.join(os.path.dirname(__file__), "dinner options.xlsx")
     meals_df, ingredients_df = load_data(filename)
 
     # User chooses number of meals
