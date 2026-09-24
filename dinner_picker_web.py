@@ -4,13 +4,12 @@ import random
 from collections import Counter
 import os
 from io import BytesIO
-
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 
 # ------------------------------------------------------------
-# Load spreadsheet safely (works on Streamlit Cloud)
+# Load spreadsheet safely
 # ------------------------------------------------------------
 def get_excel_path():
     return os.path.join(os.path.dirname(__file__), "dinners.xlsx")
@@ -146,3 +145,73 @@ def generate_pdf(meals, ingredients_df):
     for item, count in shopping.items():
         if y < 60:
             c.showPage()
+            y = height - 40
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(40, y, "Shopping List (cont.)")
+            y -= 30
+            c.setFont("Helvetica", 12)
+        c.drawString(40, y, f"- {item} x{count}")
+        y -= 16
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+# ------------------------------------------------------------
+# Spreadsheet upload
+# ------------------------------------------------------------
+def handle_upload():
+    st.subheader("Update spreadsheet")
+    uploaded_file = st.file_uploader("Upload a new dinners.xlsx", type=["xlsx"])
+    if uploaded_file is not None:
+        excel_path = get_excel_path()
+        with open(excel_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success("Spreadsheet updated. Reload the page to use the new data.")
+
+
+# ------------------------------------------------------------
+# Main app
+# ------------------------------------------------------------
+def main():
+    st.set_page_config(page_title="Weekly Dinner Picker", page_icon="🍽️")
+
+    st.title("Weekly Dinner Picker 🍽️")
+    st.write("Generate your weekly meal plan, download it as a PDF, and update your spreadsheet.")
+
+    handle_upload()
+
+    meals_df, ingredients_df = load_data()
+
+    n = st.slider("Number of meals this week:", 1, 10, 5)
+
+    if st.button("Generate Meal Plan"):
+        meals = choose_meals(meals_df, n)
+
+        st.subheader("Your Dinner Plan")
+        for m in meals:
+            st.markdown(f"### {m['Meal Name']}")
+            st.markdown(f"**Link:** {m['Link']}")
+            st.markdown(f"**Method:** {m['Method']}")
+            st.markdown(f"**Notes:** {m['Notes']}")
+
+            ingredients = get_ingredients_for_meal(m["Meal Name"], ingredients_df)
+            st.markdown("**Ingredients:**")
+            st.write(ingredients)
+
+        shopping = build_shopping_list(meals, ingredients_df)
+        st.subheader("Shopping List")
+        st.write(shopping)
+
+        pdf_buffer = generate_pdf(meals, ingredients_df)
+        st.download_button(
+            label="Download PDF Meal Plan",
+            data=pdf_buffer,
+            file_name="weekly_dinner_plan.pdf",
+            mime="application/pdf",
+        )
+
+
+if __name__ == "__main__":
+    main()
