@@ -103,38 +103,39 @@ def generate_pdf(meals, ingredients_df):
 
     y = height - 40
     line_height = 14
-    max_width = width - 80  # left margin 40, right margin 40
+    max_width = width - 80  # margins
 
-    def draw_wrapped(text, x, y):
-        """Draw text with automatic wrapping."""
+    def safe_draw(text, x, y):
+        """Draw wrapped text with automatic page breaks."""
         lines = simpleSplit(text, "Helvetica", 12, max_width)
         for line in lines:
+            # If we're too close to the bottom, start a new page
+            if y < 60:
+                c.showPage()
+                c.setFont("Helvetica", 12)
+                y = height - 40
             c.drawString(x, y, line)
             y -= line_height
         return y
 
+    # Title
     c.setFont("Helvetica-Bold", 16)
     c.drawString(40, y, "Weekly Dinner Plan")
     y -= 30
     c.setFont("Helvetica", 12)
 
+    # Meals
     for m in meals:
-        # New page if needed
-        if y < 120:
-            c.showPage()
-            y = height - 40
-            c.setFont("Helvetica", 12)
-
-        y = draw_wrapped(f"Meal: {m['Meal Name']}", 40, y)
-        y = draw_wrapped(f"Link: {m['Link']}", 40, y)
-        y = draw_wrapped(f"Method: {m['Method']}", 40, y)
-        y = draw_wrapped(f"Notes: {m['Notes']}", 40, y)
+        y = safe_draw(f"Meal: {m['Meal Name']}", 40, y)
+        y = safe_draw(f"Link: {m['Link']}", 40, y)
+        y = safe_draw(f"Method: {m['Method']}", 40, y)
+        y = safe_draw(f"Notes: {m['Notes']}", 40, y)
 
         ingredients = get_ingredients_for_meal(m["Meal Name"], ingredients_df)
-        y = draw_wrapped("Ingredients:", 40, y)
+        y = safe_draw("Ingredients:", 40, y)
 
         for ing in ingredients:
-            y = draw_wrapped(f"- {ing}", 60, y)
+            y = safe_draw(f"- {ing}", 60, y)
 
         y -= 10
 
@@ -151,11 +152,7 @@ def generate_pdf(meals, ingredients_df):
     c.setFont("Helvetica", 12)
 
     for item, count in shopping.items():
-        if y < 60:
-            c.showPage()
-            y = height - 40
-            c.setFont("Helvetica", 12)
-        y = draw_wrapped(f"- {item} x{count}", 40, y)
+        y = safe_draw(f"- {item} x{count}", 40, y)
 
     c.save()
     buffer.seek(0)
