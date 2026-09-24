@@ -92,45 +92,53 @@ def build_shopping_list(meals, ingredients_df):
 # ------------------------------------------------------------
 # PDF generation
 # ------------------------------------------------------------
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import simpleSplit
+
 def generate_pdf(meals, ingredients_df):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
     y = height - 40
+    line_height = 14
+    max_width = width - 80  # left margin 40, right margin 40
+
+    def draw_wrapped(text, x, y):
+        """Draw text with automatic wrapping."""
+        lines = simpleSplit(text, "Helvetica", 12, max_width)
+        for line in lines:
+            c.drawString(x, y, line)
+            y -= line_height
+        return y
+
     c.setFont("Helvetica-Bold", 16)
     c.drawString(40, y, "Weekly Dinner Plan")
     y -= 30
-
     c.setFont("Helvetica", 12)
 
     for m in meals:
-        if y < 80:
+        # New page if needed
+        if y < 120:
             c.showPage()
             y = height - 40
-            c.setFont("Helvetica-Bold", 16)
-            c.drawString(40, y, "Weekly Dinner Plan (cont.)")
-            y -= 30
             c.setFont("Helvetica", 12)
 
-        c.drawString(40, y, f"Meal: {m['Meal Name']}")
-        y -= 16
-        c.drawString(40, y, f"Link: {m['Link']}")
-        y -= 16
-        c.drawString(40, y, f"Method: {m['Method']}")
-        y -= 16
-        c.drawString(40, y, f"Notes: {m['Notes']}")
-        y -= 16
+        y = draw_wrapped(f"Meal: {m['Meal Name']}", 40, y)
+        y = draw_wrapped(f"Link: {m['Link']}", 40, y)
+        y = draw_wrapped(f"Method: {m['Method']}", 40, y)
+        y = draw_wrapped(f"Notes: {m['Notes']}", 40, y)
 
         ingredients = get_ingredients_for_meal(m["Meal Name"], ingredients_df)
-        c.drawString(40, y, "Ingredients:")
-        y -= 16
+        y = draw_wrapped("Ingredients:", 40, y)
+
         for ing in ingredients:
-            c.drawString(60, y, f"- {ing}")
-            y -= 14
+            y = draw_wrapped(f"- {ing}", 60, y)
 
         y -= 10
 
+    # Shopping list
     shopping = build_shopping_list(meals, ingredients_df)
 
     if y < 120:
@@ -146,16 +154,13 @@ def generate_pdf(meals, ingredients_df):
         if y < 60:
             c.showPage()
             y = height - 40
-            c.setFont("Helvetica-Bold", 16)
-            c.drawString(40, y, "Shopping List (cont.)")
-            y -= 30
             c.setFont("Helvetica", 12)
-        c.drawString(40, y, f"- {item} x{count}")
-        y -= 16
+        y = draw_wrapped(f"- {item} x{count}", 40, y)
 
     c.save()
     buffer.seek(0)
     return buffer
+
 
 
 # ------------------------------------------------------------
